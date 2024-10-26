@@ -18,14 +18,11 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-
       - name: Install packages 🔧
         run: bun install
 
       - name: Build 🚧
-        run: bun rebuild:linux
+        run: bun build:bun
 
       - name: Upload Artifact 🚀
         uses: actions/upload-artifact@v4
