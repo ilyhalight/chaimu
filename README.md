@@ -23,6 +23,35 @@ Chaimu is an audio player that synchronizes audio with video.
 
 <img src="./images/demo.png" style="width:100%">
 
+## Usage example
+
+A simple usage example:
+
+```js
+import Chaimu from "chaimu";
+
+const videoEl = document.querySelector("video");
+const chaimu = new Chaimu({
+  url: "https://s3.toil.cc/vot/translated.mp3",
+  video: videoEl,
+});
+await chaimu.init();
+```
+
+Using this code, you will link the video to the audio.
+
+If AudioContext is reached, you will be able to use advanced audio volume control.
+
+If you want to use a classic player (via audio element), specify `preferAudio` param:
+
+```js
+...
+const chaimu = new Chaimu({
+  ...
+  preferAudio: true
+});
+```
+
 ## Demo
 
 [Demo website](https://chaimu.toil.cc/)
