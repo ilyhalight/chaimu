@@ -1,0 +1,6 @@
+**/*.d.ts
+
+docs
+dist
+test-src
+eslint.config.js
