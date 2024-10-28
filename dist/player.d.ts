@@ -68,7 +68,7 @@ export declare class ChaimuPlayer extends BasePlayer {
     play(): Promise<this>;
     set src(url: string | undefined);
     get src(): string | undefined;
-    get currentSrc(): AudioBuffer | undefined;
+    get currentSrc(): string | undefined;
     set volume(value: number);
     get volume(): number;
     set playbackRate(value: number);

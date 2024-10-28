@@ -151,6 +151,11 @@ export class AudioPlayer extends BasePlayer {
       return this;
     }
 
+    if (this.gainNode && this.audioSource) {
+      this.audioSource.disconnect(this.gainNode);
+      this.gainNode.disconnect();
+    }
+
     this.gainNode = this.chaimu.audioContext.createGain();
     this.gainNode.connect(this.chaimu.audioContext.destination);
     this.audioSource = this.chaimu.audioContext.createMediaElementSource(this.audio);
@@ -310,6 +315,10 @@ export class ChaimuPlayer extends BasePlayer {
       return this;
     }
 
+    if (this.gainNode) {
+      this.gainNode.disconnect();
+    }
+
     this.gainNode = this.chaimu.audioContext.createGain();
     return this;
   }
@@ -392,6 +401,7 @@ export class ChaimuPlayer extends BasePlayer {
 
     this.gainNode.disconnect();
     const oldVolume = this.volume;
+    this.gainNode = undefined;
     await this.reopenCtx();
     this.chaimu.audioContext = initAudioContext();
     this.initAudioBooster();
@@ -405,11 +415,15 @@ export class ChaimuPlayer extends BasePlayer {
       throw new Error("No audio context available");
     }
 
-    if (!this.audioBuffer || !this.gainNode) {
+    if (!this.audioBuffer) {
       throw new Error("The player isn't initialized");
     }
 
-    if (this.audioShifter && this.audioShifter.duration < this.chaimu.video.currentTime) {
+    if (
+      !this.gainNode ||
+      (this.audioShifter && this.audioShifter.duration < this.chaimu.video.currentTime)
+    ) {
+      debug.log("Skip starting player");
       return this;
     }
 
@@ -446,6 +460,10 @@ export class ChaimuPlayer extends BasePlayer {
       throw new Error("No audio context available");
     }
 
+    if (this.chaimu.audioContext.state !== "running") {
+      return this;
+    }
+
     await this.chaimu.audioContext.suspend();
     return this;
   }
@@ -468,7 +486,7 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   get currentSrc() {
-    return this.audioBuffer;
+    return this._src;
   }
 
   set volume(value: number) {

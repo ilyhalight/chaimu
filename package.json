@@ -1,7 +1,7 @@
 {
   "name": "chaimu",
   "description": "✨ Chaimu is an audio player that synchronizes audio with video",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "author": "Toil",
   "type": "module",
