@@ -41,8 +41,8 @@ export declare class AudioPlayer extends BasePlayer {
     syncPlay(): this;
     play(): Promise<this>;
     pause(): Promise<this>;
-    set src(url: string);
-    get src(): string;
+    set src(url: string | undefined);
+    get src(): string | undefined;
     get currentSrc(): string;
     set volume(value: number);
     get volume(): number;

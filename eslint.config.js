@@ -19,6 +19,7 @@ export default tseslint.config(
       "sonarjs/new-cap": 0,
       "sonarjs/no-commented-code": 0,
       "sonarjs/no-identical-functions": 0,
+      "sonarjs/public-static-readonly": 0,
     },
     languageOptions: {
       ecmaVersion: "latest",

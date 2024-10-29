@@ -181,10 +181,15 @@ export class AudioPlayer extends BasePlayer {
         });
     }
     set src(url) {
+        this._src = url;
+        if (!url) {
+            void this.clear();
+            return;
+        }
         this.audio.src = url;
     }
     get src() {
-        return this.audio.src;
+        return this._src;
     }
     get currentSrc() {
         return this.audio.currentSrc;
@@ -287,7 +292,8 @@ export class ChaimuPlayer extends BasePlayer {
         try {
             await this.chaimu.audioContext.close();
         }
-        catch { }
+        catch {
+        }
         return this;
     }
     async clear() {

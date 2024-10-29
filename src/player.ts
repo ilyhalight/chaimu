@@ -238,12 +238,18 @@ export class AudioPlayer extends BasePlayer {
     });
   }
 
-  set src(url: string) {
+  set src(url: string | undefined) {
+    this._src = url;
+    if (!url) {
+      void this.clear();
+      return;
+    }
+
     this.audio.src = url;
   }
 
   get src() {
-    return this.audio.src;
+    return this._src;
   }
 
   get currentSrc() {
@@ -370,7 +376,9 @@ export class ChaimuPlayer extends BasePlayer {
 
     try {
       await this.chaimu.audioContext.close();
-    } catch {}
+    } catch {
+      /* empty */
+    }
     return this;
   }
 

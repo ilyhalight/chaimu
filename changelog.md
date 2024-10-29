@@ -1,3 +1,7 @@
+# 1.0.2
+
+- Fix get/set src for AudioPlayer
+
 # 1.0.1
 
 - Added disconnect gainNode before initAudioBooster if exists
