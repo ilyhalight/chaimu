@@ -136,14 +136,13 @@ export class BasePlayer {
 
 export class AudioPlayer extends BasePlayer {
   static name = "AudioPlayer";
-  audio: HTMLAudioElement;
+  audio!: HTMLAudioElement;
   gainNode: GainNode | undefined;
   audioSource: MediaElementAudioSourceNode | undefined;
 
   constructor(chaimu: Chaimu, src?: string) {
     super(chaimu, src);
-    this.audio = new Audio(src);
-    this.audio.crossOrigin = "anonymous";
+    this.updateAudio();
   }
 
   initAudioBooster() {
@@ -163,8 +162,15 @@ export class AudioPlayer extends BasePlayer {
     return this;
   }
 
+  protected updateAudio() {
+    this.audio = new Audio(this.src);
+    this.audio.crossOrigin = "anonymous";
+    return this;
+  }
+
   async init(): Promise<this> {
     return new Promise((resolve) => {
+      this.updateAudio();
       this.initAudioBooster();
       return resolve(this);
     });

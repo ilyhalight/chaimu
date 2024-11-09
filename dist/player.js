@@ -98,8 +98,7 @@ export class AudioPlayer extends BasePlayer {
     audioSource;
     constructor(chaimu, src) {
         super(chaimu, src);
-        this.audio = new Audio(src);
-        this.audio.crossOrigin = "anonymous";
+        this.updateAudio();
     }
     initAudioBooster() {
         if (!this.chaimu.audioContext) {
@@ -115,8 +114,14 @@ export class AudioPlayer extends BasePlayer {
         this.audioSource.connect(this.gainNode);
         return this;
     }
+    updateAudio() {
+        this.audio = new Audio(this.src);
+        this.audio.crossOrigin = "anonymous";
+        return this;
+    }
     async init() {
         return new Promise((resolve) => {
+            this.updateAudio();
             this.initAudioBooster();
             return resolve(this);
         });

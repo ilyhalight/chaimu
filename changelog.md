@@ -1,3 +1,8 @@
+# 1.0.3
+
+- Added repeated Audio initialization in init function of AudioPlayer to fix stuck during reinitialization
+- Removed sonarjs plugin
+
 # 1.0.2
 
 - Fix get/set src for AudioPlayer

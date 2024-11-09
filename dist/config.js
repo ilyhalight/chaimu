@@ -1,5 +1,5 @@
 export default {
-    version: "1.0.2",
+    version: "1.0.3",
     debug: false,
     fetchFn: fetch.bind(window),
 };

@@ -34,6 +34,7 @@ export declare class AudioPlayer extends BasePlayer {
     audioSource: MediaElementAudioSourceNode | undefined;
     constructor(chaimu: Chaimu, src?: string);
     initAudioBooster(): this;
+    protected updateAudio(): this;
     init(): Promise<this>;
     audioErrorHandle: (e: DOMException) => void;
     lipSync(mode?: false | string): this;
