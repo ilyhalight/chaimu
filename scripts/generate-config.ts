@@ -13,5 +13,6 @@ export default {
   version: "${packageInfo.version}",
   debug: false,
   fetchFn: fetch.bind(window),
-}`,
+};
+`,
 );
