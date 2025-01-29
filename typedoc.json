@@ -1,6 +1,8 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": ["./src/index.ts"],
+  "name": "chaimu",
   "out": "docs",
-  "plugin": []
+  "includeVersion": true,
+  "plugin": ["typedoc-plugin-rename-defaults"]
 }
