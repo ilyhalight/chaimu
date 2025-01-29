@@ -1,6 +1,6 @@
 import config from "./config";
 import { AudioPlayer, ChaimuPlayer, initAudioContext } from "./player";
-import { ChaimuOpts } from "./types/controller";
+import { ChaimuOpts, FetchFunction, FetchOpts } from "./types/controller";
 
 export default class Chaimu {
   _debug = false;
@@ -8,16 +8,20 @@ export default class Chaimu {
 
   player: AudioPlayer | ChaimuPlayer;
   video: HTMLVideoElement;
+  fetchFn: FetchFunction;
+  fetchOpts: FetchOpts;
 
   constructor({
     url,
     video,
     debug = false,
     fetchFn = config.fetchFn,
+    fetchOpts = {},
     preferAudio = false,
   }: ChaimuOpts) {
     this._debug = config.debug = debug;
-    config.fetchFn = fetchFn;
+    this.fetchFn = fetchFn;
+    this.fetchOpts = fetchOpts;
     this.audioContext = initAudioContext();
     this.player =
       this.audioContext && !preferAudio ? new ChaimuPlayer(this, url) : new AudioPlayer(this, url);

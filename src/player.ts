@@ -2,8 +2,7 @@ import { PitchShifter } from "soundtouchjs";
 import debug from "./debug";
 
 import Chaimu from "./client";
-import config from "./config";
-import { FetchFunction } from "./types/controller";
+import { FetchFunction, FetchOpts } from "./types/controller";
 
 export const videoLipSyncEvents = [
   "playing",
@@ -27,13 +26,16 @@ export class BasePlayer {
   // if don't specify it manually, the class name will be deleted during minification
   static name = "BasePlayer";
   chaimu: Chaimu;
-  _src: string | undefined;
   fetch: FetchFunction;
+
+  _src?: string;
+  fetchOpts?: FetchOpts;
 
   constructor(chaimu: Chaimu, src?: string) {
     this.chaimu = chaimu;
     this._src = src;
-    this.fetch = config.fetchFn;
+    this.fetch = this.chaimu.fetchFn;
+    this.fetchOpts = this.chaimu.fetchOpts;
   }
 
   async init(): Promise<this> {
@@ -311,7 +313,7 @@ export class ChaimuPlayer extends BasePlayer {
     debug.log(`[ChaimuPlayer] Fetching audio from ${this._src}...`);
 
     try {
-      const res = await this.fetch(this._src);
+      const res = await this.fetch(this._src, this.fetchOpts);
       debug.log(`[ChaimuPlayer] Decoding fetched audio...`);
       const data = await res.arrayBuffer();
       this.audioBuffer = await this.chaimu.audioContext.decodeAudioData(data);
