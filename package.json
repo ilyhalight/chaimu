@@ -1,7 +1,7 @@
 {
   "name": "chaimu",
   "description": "✨ Chaimu is an audio player that synchronizes audio with video",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "license": "MIT",
   "author": "Toil",
   "type": "module",
@@ -17,18 +17,19 @@
     "url": "https://github.com/ilyhalight/chaimu/issues"
   },
   "devDependencies": {
-    "@types/bun": "^1.1.12",
+    "@types/bun": "^1.2.1",
     "@types/eslint__js": "^8.42.3",
-    "eslint": "^9.12.0",
+    "eslint": "^9.19.0",
     "eslint-plugin-oxlint": "^0.15.2",
-    "husky": "^9.1.6",
+    "husky": "^9.1.7",
     "oxlint": "^0.15.3",
     "pino-pretty": "^13.0.0",
-    "tsc-esm-fix": "^3.1.0",
+    "prettier": "^3.4.2",
+    "tsc-esm-fix": "^3.1.2",
     "typedoc": "^0.27.5",
-    "typedoc-plugin-rename-defaults": "^0.7.1",
-    "typescript": "^5.6.3",
-    "typescript-eslint": "^8.9.0"
+    "typedoc-plugin-rename-defaults": "^0.7.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.22.0"
   },
   "exports": {
     ".": {
@@ -36,15 +37,30 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
-    "./": {
+    "./player": {
       "require": "./dist/player.js",
       "import": "./dist/player.js",
       "types": "./dist/player.d.ts"
     },
-    "./min": {
-      "require": "./dist/min.js",
-      "import": "./dist/min.js",
-      "types": "./dist/min.d.ts"
+    "./client": {
+      "require": "./dist/client.js",
+      "import": "./dist/client.js",
+      "types": "./dist/client.d.ts"
+    },
+    "./debug": {
+      "require": "./dist/debug.js",
+      "import": "./dist/debug.js",
+      "types": "./dist/debug.d.ts"
+    },
+    "./config": {
+      "require": "./dist/config.js",
+      "import": "./dist/config.js",
+      "types": "./dist/config.d.ts"
+    },
+    "./types/*": {
+      "require": "./dist/types/*.js",
+      "import": "./dist/types/*.js",
+      "types": "./dist/types/*.d.ts"
     }
   },
   "files": [
@@ -62,8 +78,8 @@
     "gen:cfg": "bun run scripts/generate-config.ts",
     "build:default": "tsc --project tsconfig.build.json --outdir ./dist && tsc-esm-fix --tsconfig tsconfig.build.json",
     "build:doc": "typedoc --options typedoc.json --tsconfig tsconfig.build.json",
-    "build:min": "bun run build.ts",
-    "build:bun": "bun gen:cfg && bun build:default && bun build:doc && bun build:min",
+    "build:bun": "bun gen:cfg && bun build:default && bun build:doc",
+    "build:min": "bun run ./scripts/build.ts",
     "lint": "bunx oxlint --ignore-path=.oxlintignore && bunx eslint",
     "prepare": "husky"
   },
