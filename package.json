@@ -84,6 +84,6 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "soundtouchjs": "^0.1.30"
+    "soundtouchjs": "^0.2.1"
   }
 }
