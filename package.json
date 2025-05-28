@@ -17,19 +17,17 @@
     "url": "https://github.com/ilyhalight/chaimu/issues"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.1",
-    "@types/eslint__js": "^8.42.3",
-    "eslint": "^9.19.0",
-    "eslint-plugin-oxlint": "^0.16.10",
+    "@types/bun": "^1.2.14",
+    "eslint": "^9.27.0",
     "husky": "^9.1.7",
-    "oxlint": "^0.16.10",
+    "oxlint": "^0.16.12",
     "pino-pretty": "^13.0.0",
-    "prettier": "^3.4.2",
+    "prettier": "^3.5.3",
     "tsc-esm-fix": "^3.1.2",
-    "typedoc": "^0.27.5",
-    "typedoc-plugin-rename-defaults": "^0.7.2",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.22.0"
+    "typedoc": "^0.28.5",
+    "typedoc-plugin-rename-defaults": "^0.7.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.0"
   },
   "exports": {
     ".": {

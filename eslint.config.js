@@ -1,11 +1,8 @@
 import js from "@eslint/js";
-import oxlint from "eslint-plugin-oxlint";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  {
-    ignores: ["dist/*", "docs/*", "test-src/*", "**/*.d.ts", "eslint.config.js"],
-  },
+  { ignores: ["dist/*", "docs/*", "test-src/*", "scripts/*", "**/*.d.ts", "eslint.config.js"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
@@ -17,11 +14,7 @@ export default tseslint.config(
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
-      parserOptions: {
-        project: true,
-        tsconfigDirName: import.meta.dirname,
-      },
+      parserOptions: { project: true, tsconfigDirName: import.meta.dirname },
     },
   },
-  oxlint.configs["flat/recommended"], // oxlint should be the last one
 );

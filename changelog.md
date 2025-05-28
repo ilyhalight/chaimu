@@ -1,3 +1,9 @@
+# 1.0.5 [WIP]
+
+## Workspace
+
+- Bump depends
+
 # 1.0.4
 
 ## Lib

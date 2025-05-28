@@ -54,7 +54,7 @@ export class BasePlayer {
    * Synchronizes the lipsync of the video and audio elements
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  lipSync(mode: false | string = false) {
+  lipSync(_mode: false | string = false) {
     return this;
   }
 
@@ -111,7 +111,7 @@ export class BasePlayer {
   /**
    * set audio volume in range 0.00 - 1.00
    */
-  set volume(value: number) {
+  set volume(_value: number) {
     return;
   }
 
@@ -126,7 +126,7 @@ export class BasePlayer {
     return 0;
   }
 
-  set playbackRate(value: number) {
+  set playbackRate(_value: number) {
     return;
   }
 
