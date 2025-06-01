@@ -78,10 +78,6 @@
     "build:doc": "typedoc --options typedoc.json --tsconfig tsconfig.build.json",
     "build:bun": "bun gen:cfg && bun build:default && bun build:doc",
     "build:min": "bun run ./scripts/build.ts",
-    "lint": "bunx oxlint --ignore-path=.oxlintignore && bunx eslint",
-    "prepare": "husky"
-  },
-  "dependencies": {
-    "soundtouchjs": "^0.2.1"
+    "lint": "bunx oxlint --ignore-path=.oxlintignore && bunx eslint"
   }
 }
