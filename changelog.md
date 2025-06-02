@@ -1,4 +1,8 @@
-# 1.0.5 [WIP]
+# 1.0.5
+
+## Lib
+
+- Fixed sound distortion (in #57)
 
 ## Workspace
 
