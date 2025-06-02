@@ -4,3 +4,5 @@ await Bun.build({
   naming: "[dir]/[name].min.[ext]",
   minify: true,
 });
+
+export {};

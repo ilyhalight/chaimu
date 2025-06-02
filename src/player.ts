@@ -37,10 +37,12 @@ export class BasePlayer {
     this.fetchOpts = this.chaimu.fetchOpts;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async init(): Promise<this> {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async clear(): Promise<this> {
     return this;
   }
@@ -75,10 +77,12 @@ export class BasePlayer {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async play(): Promise<this> {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async pause(): Promise<this> {
     return this;
   }
@@ -169,6 +173,7 @@ export class AudioPlayer extends BasePlayer {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async init(): Promise<this> {
     this.updateAudio();
     this.initAudioBooster();
@@ -213,6 +218,7 @@ export class AudioPlayer extends BasePlayer {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async clear(): Promise<this> {
     this.audio.pause();
     this.audio.src = "";
@@ -237,6 +243,7 @@ export class AudioPlayer extends BasePlayer {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async pause(): Promise<this> {
     debug.log("[AudioPlayer] pause called");
     if (this.audio) {
@@ -396,9 +403,9 @@ export class ChaimuPlayer extends BasePlayer {
 
     // Preserve pitch when changing playbackRate
     if ("preservesPitch" in audio) {
-      (audio as any).preservesPitch = true;
-      if ("mozPreservesPitch" in audio) (audio as any).mozPreservesPitch = true;
-      if ("webkitPreservesPitch" in audio) (audio as any).webkitPreservesPitch = true;
+      audio.preservesPitch = true;
+      if ("mozPreservesPitch" in audio) audio.mozPreservesPitch = true;
+      if ("webkitPreservesPitch" in audio) audio.webkitPreservesPitch = true;
     }
 
     this.audioElement = audio;
