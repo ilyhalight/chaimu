@@ -1,3 +1,7 @@
+# 1.0.6
+
+- Set url as optional parameter for Chaimu client
+
 # 1.0.5
 
 ## Lib

@@ -7,7 +7,7 @@ export type FetchFunction = (input: string | URL | Request, init?: any) => Promi
 export type FetchOpts = Record<string, unknown>;
 
 export type ChaimuOpts = {
-  url: string;
+  url?: string;
   video: HTMLVideoElement;
   debug?: boolean;
   fetchFn?: FetchFunction;
