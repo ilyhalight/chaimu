@@ -294,8 +294,6 @@ test("ChaimuPlayer reports unsuccessful HTTP responses", async ({ page }) => {
 });
 
 test("initialization cannot resurrect a cleared ChaimuPlayer", async ({ page }) => {
-  test.fail(true, "init and clear are not serialized or cancelled");
-
   const state = await page.evaluate(async () => {
     const bytes = await fetch("/audio.wav").then((response) => response.arrayBuffer());
     let resolveFetch!: (response: Response) => void;
@@ -324,6 +322,95 @@ test("initialization cannot resurrect a cleared ChaimuPlayer", async ({ page }) 
   });
 
   expect(state).toEqual({ blobUrl: undefined, hasAudioElement: false });
+});
+
+test("clearing cancels a start waiting to resume", async ({ page }) => {
+  const state = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+    const client = new window.chaimuModule.default({ url: "/audio.wav", video });
+    await client.init();
+
+    if (!(client.player instanceof window.chaimuModule.ChaimuPlayer)) {
+      throw new Error("Expected ChaimuPlayer");
+    }
+
+    const player = client.player;
+    let playCalls = 0;
+    player.audioElement!.play = () => {
+      playCalls += 1;
+      return Promise.resolve();
+    };
+
+    let releaseStart!: () => void;
+    let startEntered!: () => void;
+    const startGate = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      startEntered = resolve;
+    });
+    player.play = async () => {
+      startEntered();
+      await startGate;
+      return player;
+    };
+
+    const starting = player.start();
+    await entered;
+    const clearing = player.clear();
+    releaseStart();
+    const results = await Promise.allSettled([starting, clearing]);
+    const result = {
+      hasAudioElement: Boolean(player.audioElement),
+      playCalls,
+      statuses: results.map(({ status }) => status),
+    };
+    await client.audioContext?.close();
+    return result;
+  });
+
+  expect(state).toEqual({
+    hasAudioElement: false,
+    playCalls: 0,
+    statuses: ["fulfilled", "fulfilled"],
+  });
+});
+
+test("start requested during clearing is ignored", async ({ page }) => {
+  const statuses = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+    const client = new window.chaimuModule.default({ url: "/audio.wav", video });
+    await client.init();
+
+    if (!(client.player instanceof window.chaimuModule.ChaimuPlayer)) {
+      throw new Error("Expected ChaimuPlayer");
+    }
+
+    const player = client.player;
+    let releaseClear!: () => void;
+    let clearEntered!: () => void;
+    const clearGate = new Promise<void>((resolve) => {
+      releaseClear = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      clearEntered = resolve;
+    });
+    player.reopenCtx = async () => {
+      clearEntered();
+      await clearGate;
+      return player;
+    };
+
+    const clearing = player.clear();
+    await entered;
+    const starting = player.start();
+    releaseClear();
+    const results = await Promise.allSettled([clearing, starting]);
+    await client.audioContext?.close();
+    return results.map(({ status }) => status);
+  });
+
+  expect(statuses).toEqual(["fulfilled", "fulfilled"]);
 });
 
 test("media-element playback does not retain a duplicate decoded buffer", async ({ page }) => {

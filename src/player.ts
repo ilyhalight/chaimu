@@ -305,11 +305,22 @@ export class ChaimuPlayer extends BasePlayer {
   gainNode: GainNode | undefined;
   blobUrl: string | undefined;
 
-  private isClearing = false;
-  private isInitializing = false;
+  private lifecycleGeneration = 0;
+  private lifecycleQueue: Promise<void> = Promise.resolve();
+  private initializationAbortController: AbortController | undefined;
+  private cancelInitialization: (() => void) | undefined;
   private clearingPromise: Promise<this> | undefined;
 
-  async fetchAudio() {
+  private enqueueLifecycle(operation: () => Promise<this>): Promise<this> {
+    const result = this.lifecycleQueue.then(operation);
+    this.lifecycleQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  async fetchAudio(signal?: AbortSignal) {
     if (!this._src) {
       throw new Error("No audio source provided");
     }
@@ -322,9 +333,12 @@ export class ChaimuPlayer extends BasePlayer {
     let tempBlobUrl: string | undefined;
 
     try {
-      const res = await this.fetch(this._src, this.fetchOpts);
+      const fetchSignal = this.fetchOpts?.signal ?? signal;
+      const res = await this.fetch(this._src, { ...this.fetchOpts, signal: fetchSignal });
+      signal?.throwIfAborted();
       debug.log(`[ChaimuPlayer] Decoding fetched audio...`);
       const data = await res.arrayBuffer();
+      signal?.throwIfAborted();
 
       // Create a Blob from the ArrayBuffer
       const blob = new Blob([data]);
@@ -333,11 +347,13 @@ export class ChaimuPlayer extends BasePlayer {
       tempBlobUrl = URL.createObjectURL(blob);
 
       // Decode audio data
-      this.audioBuffer = await this.chaimu.audioContext.decodeAudioData(data);
+      const audioBuffer = await this.chaimu.audioContext.decodeAudioData(data);
+      signal?.throwIfAborted();
 
       if (this.blobUrl) {
         URL.revokeObjectURL(this.blobUrl);
       }
+      this.audioBuffer = audioBuffer;
       this.blobUrl = tempBlobUrl;
       tempBlobUrl = undefined;
     } catch (err) {
@@ -373,20 +389,41 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   async init() {
-    if (this.isInitializing) {
-      throw new Error("Initialization already in progress");
-    }
+    const generation = this.lifecycleGeneration;
 
-    this.isInitializing = true;
+    return this.enqueueLifecycle(async () => {
+      if (generation !== this.lifecycleGeneration) {
+        return this;
+      }
 
-    try {
-      await this.fetchAudio();
-      this.initAudioBooster();
-      this.createAudioElement();
-      return this;
-    } finally {
-      this.isInitializing = false;
-    }
+      const abortController = new AbortController();
+      let cancelInitialization: () => void;
+      const cancellation = new Promise<"cancelled">((resolve) => {
+        cancelInitialization = () => resolve("cancelled");
+      });
+      this.initializationAbortController = abortController;
+      this.cancelInitialization = cancelInitialization!;
+
+      try {
+        const initialization = this.fetchAudio(abortController.signal).then(
+          () => "initialized" as const,
+        );
+        const result = await Promise.race([initialization, cancellation]);
+
+        if (result === "cancelled" || generation !== this.lifecycleGeneration) {
+          return this;
+        }
+
+        this.initAudioBooster();
+        this.createAudioElement();
+        return this;
+      } finally {
+        if (this.initializationAbortController === abortController) {
+          this.initializationAbortController = undefined;
+          this.cancelInitialization = undefined;
+        }
+      }
+    });
   }
 
   protected createAudioElement() {
@@ -466,7 +503,7 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   async clear() {
-    if (this.isClearing && this.clearingPromise) {
+    if (this.clearingPromise) {
       return this.clearingPromise;
     }
 
@@ -476,73 +513,91 @@ export class ChaimuPlayer extends BasePlayer {
 
     debug.log("clear audio context");
 
-    this.isClearing = true;
+    this.lifecycleGeneration += 1;
+    this.initializationAbortController?.abort();
+    this.cancelInitialization?.();
 
-    this.clearingPromise = (async () => {
-      try {
-        await this.pause();
+    const clearingPromise = this.enqueueLifecycle(async () => {
+      await this.pause();
 
-        if (this.audioElement) {
-          this.audioElement.pause();
-          this.audioElement = undefined;
-        }
+      if (this.audioElement) {
+        this.audioElement.pause();
+        this.audioElement = undefined;
+      }
 
-        if (this.blobUrl) {
-          URL.revokeObjectURL(this.blobUrl);
-          this.blobUrl = undefined;
-        }
+      if (this.blobUrl) {
+        URL.revokeObjectURL(this.blobUrl);
+        this.blobUrl = undefined;
+      }
 
-        this.disconnectAudioNodes();
+      this.disconnectAudioNodes();
 
-        const oldVolume = this.gainNode ? this.gainNode.gain.value : 1;
-        await this.reopenCtx();
-        if (this.chaimu.audioContext) {
-          this.initAudioBooster();
-          this.volume = oldVolume;
-        }
+      const oldVolume = this.gainNode ? this.gainNode.gain.value : 1;
+      await this.reopenCtx();
+      if (this.chaimu.audioContext) {
+        this.initAudioBooster();
+        this.volume = oldVolume;
+      }
 
-        return this;
-      } finally {
-        this.isClearing = false;
+      return this;
+    });
+    this.clearingPromise = clearingPromise;
+
+    try {
+      return await clearingPromise;
+    } finally {
+      if (this.clearingPromise === clearingPromise) {
         this.clearingPromise = undefined;
       }
-    })();
-
-    return this.clearingPromise;
+    }
   }
 
   async start() {
-    if (!this.chaimu.audioContext) {
-      throw new Error("No audio context available");
-    }
-
-    if (!this.audioElement) {
-      throw new Error("Audio element is missing");
-    }
-
-    if (this.isClearing && this.clearingPromise) {
-      // fix sound duplication when activating multiple lipsync (play/playing) in a row
-      debug.log("The other cleaner is still running, waiting...");
+    if (this.clearingPromise) {
       await this.clearingPromise;
+      return this;
     }
 
-    debug.log("starting audio via HTMLAudioElement");
+    const generation = this.lifecycleGeneration;
 
-    // Wait for audioContext to resume if suspended
-    await this.play();
+    return this.enqueueLifecycle(async () => {
+      if (generation !== this.lifecycleGeneration) {
+        return this;
+      }
+      if (!this.chaimu.audioContext) {
+        throw new Error("No audio context available");
+      }
+      if (!this.audioElement) {
+        throw new Error("Audio element is missing");
+      }
 
-    if (this.chaimu.video) {
-      // Sync currentTime and playbackRate from video
-      this.audioElement.currentTime = this.chaimu.video.currentTime;
-      this.audioElement.playbackRate = this.chaimu.video.playbackRate;
-    }
+      debug.log("starting audio via HTMLAudioElement");
 
-    // Play audio (connected to WebAudio via MediaElementAudioSource)
-    this.audioElement
-      .play()
-      .catch((err) => debug.log("[ChaimuPlayer] Play audioElement failed:", err));
+      // Wait for audioContext to resume if suspended
+      await this.play();
 
-    return this;
+      if (generation !== this.lifecycleGeneration) {
+        return this;
+      }
+
+      const audioElement = this.audioElement;
+      if (!audioElement) {
+        return this;
+      }
+
+      if (this.chaimu.video) {
+        // Sync currentTime and playbackRate from video
+        audioElement.currentTime = this.chaimu.video.currentTime;
+        audioElement.playbackRate = this.chaimu.video.playbackRate;
+      }
+
+      // Play audio (connected to WebAudio via MediaElementAudioSource)
+      audioElement
+        .play()
+        .catch((err) => debug.log("[ChaimuPlayer] Play audioElement failed:", err));
+
+      return this;
+    });
   }
 
   async pause() {
