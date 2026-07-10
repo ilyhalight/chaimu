@@ -172,9 +172,7 @@ test("preferAudio resumes its suspended AudioContext before playback", async ({ 
 });
 
 test("AudioPlayer reconnects Web Audio after source replacement", async ({ page }) => {
-  test.fail(true, "AudioPlayer discards its source node while reusing the routed media element");
-
-  const connected = await page.evaluate(async () => {
+  const state = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
     const client = new window.chaimuModule.default({
       preferAudio: true,
@@ -187,14 +185,30 @@ test("AudioPlayer reconnects Web Audio after source replacement", async ({ page 
       throw new Error("Expected AudioPlayer");
     }
 
-    client.player.src = undefined;
-    client.player.src = "/audio.wav?replacement";
-    const result = Boolean(client.player.audioSource);
+    const player = client.player;
+    player.src = undefined;
+    player.src = "/audio.wav?replacement";
+    if (player.audio.readyState < HTMLMediaElement.HAVE_METADATA) {
+      await new Promise<void>((resolve, reject) => {
+        player.audio.addEventListener("loadedmetadata", () => resolve(), { once: true });
+        player.audio.addEventListener(
+          "error",
+          () => reject(new Error(player.audio.error?.message ?? "Audio failed to load")),
+          { once: true },
+        );
+      });
+    }
+    const result = {
+      connected: Boolean(player.audioSource),
+      currentSrc: player.currentSrc,
+    };
+    await player.clear();
     await client.audioContext?.close();
     return result;
   });
 
-  expect(connected).toBe(true);
+  expect(state.connected).toBe(true);
+  expect(state.currentSrc).toContain("/audio.wav?replacement");
 });
 
 test("ChaimuPlayer.play starts its media element", async ({ page }) => {
@@ -230,9 +244,7 @@ test("ChaimuPlayer.play starts its media element", async ({ page }) => {
 });
 
 test("ChaimuPlayer unloads old media when its source changes", async ({ page }) => {
-  test.fail(true, "ChaimuPlayer.src changes metadata without replacing loaded media");
-
-  const hasLoadedElement = await page.evaluate(async () => {
+  const state = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
     const client = new window.chaimuModule.default({ url: "/audio.wav", video });
     await client.init();
@@ -241,13 +253,39 @@ test("ChaimuPlayer unloads old media when its source changes", async ({ page }) 
       throw new Error("Expected ChaimuPlayer");
     }
 
-    client.player.src = "/audio.wav?replacement";
-    const result = Boolean(client.player.audioElement);
+    const player = client.player;
+    const oldAudioElement = player.audioElement!;
+    player.src = "/audio.wav?replacement";
+    const currentSrcWhileLoading = player.currentSrc;
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Replacement source did not load")), 5_000);
+      const check = () => {
+        if (player.audioElement && player.audioElement !== oldAudioElement) {
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      check();
+    });
+    const result = {
+      currentSrc: player.currentSrc,
+      currentSrcWhileLoading,
+      oldAudioPaused: oldAudioElement.paused,
+      replacementLoaded: Boolean(player.audioElement),
+    };
+    await player.clear();
     await client.audioContext?.close();
     return result;
   });
 
-  expect(hasLoadedElement).toBe(false);
+  expect(state).toEqual({
+    currentSrc: "/audio.wav?replacement",
+    currentSrcWhileLoading: undefined,
+    oldAudioPaused: true,
+    replacementLoaded: true,
+  });
 });
 
 test("ChaimuPlayer preserves volume while clearing", async ({ page }) => {

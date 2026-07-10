@@ -260,6 +260,12 @@ export class AudioPlayer extends BasePlayer {
       return;
     }
 
+    if (this.chaimu.audioContext && !this.audioSource) {
+      this.updateAudio();
+      this.initAudioBooster();
+      return;
+    }
+
     this.audio.src = url;
   }
 
@@ -311,6 +317,7 @@ export class ChaimuPlayer extends BasePlayer {
   private initializationAbortController: AbortController | undefined;
   private cancelInitialization: (() => void) | undefined;
   private clearingPromise: Promise<this> | undefined;
+  private sourceGeneration = 0;
 
   private enqueueLifecycle(operation: () => Promise<this>): Promise<this> {
     const result = this.lifecycleQueue.then(operation);
@@ -504,6 +511,8 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   async clear() {
+    this.sourceGeneration += 1;
+
     if (this.clearingPromise) {
       return this.clearingPromise;
     }
@@ -628,6 +637,29 @@ export class ChaimuPlayer extends BasePlayer {
 
   set src(url: string | undefined) {
     this._src = url;
+
+    if (this.audioElement) {
+      this.audioElement.pause();
+      this.audioElement = undefined;
+    }
+
+    const clearing = this.clear();
+    const sourceGeneration = this.sourceGeneration;
+
+    if (!url) {
+      void clearing.catch((err) => debug.log("[ChaimuPlayer] Failed to clear source:", err));
+      return;
+    }
+
+    void clearing
+      .then(() => {
+        if (sourceGeneration !== this.sourceGeneration || this._src !== url) {
+          return this;
+        }
+
+        return this.init();
+      })
+      .catch((err) => debug.log("[ChaimuPlayer] Failed to replace source:", err));
   }
 
   get src() {
@@ -635,7 +667,7 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   get currentSrc() {
-    return this._src;
+    return this.audioElement ? this._src : undefined;
   }
 
   set volume(value: number) {
