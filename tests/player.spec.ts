@@ -151,6 +151,98 @@ test("ChaimuPlayer clears loaded browser resources", async ({ page }) => {
   });
 });
 
+test("destroy removes listeners and closes resources for both players", async ({ page }) => {
+  const state = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+    const audioClient = new window.chaimuModule.default({
+      preferAudio: true,
+      url: "/audio.wav",
+      video,
+    });
+    await audioClient.init();
+
+    if (!(audioClient.player instanceof window.chaimuModule.AudioPlayer)) {
+      throw new Error("Expected AudioPlayer");
+    }
+
+    const audioPlayer = audioClient.player;
+    const audioElement = audioPlayer.audio;
+    const audioContext = audioClient.audioContext!;
+    await audioClient.destroy();
+    await audioClient.destroy();
+
+    video.playbackRate = 1.5;
+    video.dispatchEvent(new Event("ratechange"));
+
+    const defaultClient = new window.chaimuModule.default({ url: "/audio.wav", video });
+    await defaultClient.init();
+
+    if (!(defaultClient.player instanceof window.chaimuModule.ChaimuPlayer)) {
+      throw new Error("Expected ChaimuPlayer");
+    }
+
+    const defaultPlayer = defaultClient.player;
+    const defaultAudioElement = defaultPlayer.audioElement!;
+    const defaultContext = defaultClient.audioContext!;
+    await defaultClient.destroy();
+
+    let reinitializationError: string | undefined;
+    try {
+      await defaultClient.init();
+    } catch (error) {
+      reinitializationError = error instanceof Error ? error.message : String(error);
+    }
+
+    return {
+      audio: {
+        contextState: audioContext.state,
+        clientHasContext: Boolean(audioClient.audioContext),
+        destroyed: audioClient.destroyed,
+        hasGainNode: Boolean(audioPlayer.gainNode),
+        hasSourceNode: Boolean(audioPlayer.audioSource),
+        hasSrc: audioElement.hasAttribute("src"),
+        listenerRemoved: audioElement.playbackRate === 1,
+        paused: audioElement.paused,
+      },
+      default: {
+        blobUrl: defaultPlayer.blobUrl,
+        clientHasContext: Boolean(defaultClient.audioContext),
+        contextState: defaultContext.state,
+        hasAudioElement: Boolean(defaultPlayer.audioElement),
+        hasGainNode: Boolean(defaultPlayer.gainNode),
+        hasMediaSource: Boolean(defaultPlayer.mediaElementSource),
+        mediaPaused: defaultAudioElement.paused,
+        mediaHasSrc: defaultAudioElement.hasAttribute("src"),
+        reinitializationError,
+      },
+    };
+  });
+
+  expect(state).toEqual({
+    audio: {
+      contextState: "closed",
+      clientHasContext: false,
+      destroyed: true,
+      hasGainNode: false,
+      hasSourceNode: false,
+      hasSrc: false,
+      listenerRemoved: true,
+      paused: true,
+    },
+    default: {
+      blobUrl: undefined,
+      clientHasContext: false,
+      contextState: "closed",
+      hasAudioElement: false,
+      hasGainNode: false,
+      hasMediaSource: false,
+      mediaPaused: true,
+      mediaHasSrc: false,
+      reinitializationError: "Chaimu has been destroyed",
+    },
+  });
+});
+
 test("preferAudio resumes its suspended AudioContext before playback", async ({ page }) => {
   const state = await page.evaluate(async () => {
     const video = document.querySelector("video")!;

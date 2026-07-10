@@ -6,6 +6,9 @@ export default class Chaimu {
   _debug = false;
   audioContext: AudioContext | undefined;
 
+  private isDestroyed = false;
+  private destructionPromise: Promise<this> | undefined;
+
   player: AudioPlayer | ChaimuPlayer;
   video: HTMLVideoElement;
   fetchFn: FetchFunction;
@@ -29,12 +32,30 @@ export default class Chaimu {
   }
 
   async init() {
+    if (this.isDestroyed) {
+      throw new Error("Chaimu has been destroyed");
+    }
+
     await this.player.init();
     if (this.video && !this.video.paused) {
       this.player.lipSync("play");
     }
 
     this.player.addVideoEvents();
+  }
+
+  destroy(): Promise<this> {
+    if (this.destructionPromise) {
+      return this.destructionPromise;
+    }
+
+    this.isDestroyed = true;
+    this.destructionPromise = this.player.destroy().then(() => this);
+    return this.destructionPromise;
+  }
+
+  get destroyed() {
+    return this.isDestroyed;
   }
 
   set debug(value: boolean) {
