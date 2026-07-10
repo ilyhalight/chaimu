@@ -229,14 +229,15 @@ export class AudioPlayer extends BasePlayer {
 
   syncPlay() {
     debug.log("[AudioPlayer] sync play called");
-    if (this.audio) {
-      this.audio.play().catch(this.audioErrorHandle);
-    }
+    void this.play().catch(this.audioErrorHandle);
     return this;
   }
 
   async play() {
     debug.log("[AudioPlayer] play called");
+    if (this.chaimu.audioContext?.state === "suspended") {
+      await this.chaimu.audioContext.resume();
+    }
     if (this.audio) {
       await this.audio.play().catch(this.audioErrorHandle);
     }

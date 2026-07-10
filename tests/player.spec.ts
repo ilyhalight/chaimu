@@ -152,8 +152,6 @@ test("ChaimuPlayer clears loaded browser resources", async ({ page }) => {
 });
 
 test("preferAudio resumes its suspended AudioContext before playback", async ({ page }) => {
-  test.fail(true, "AudioPlayer.play does not resume its Web Audio graph");
-
   const state = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
     const client = new window.chaimuModule.default({
