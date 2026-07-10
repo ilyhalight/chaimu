@@ -42,6 +42,104 @@ test("selects the native and Web Audio player implementations", async ({ page })
   });
 });
 
+test("both players support source-less initialization", async ({ page }) => {
+  const states = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "currentTime", { configurable: true, value: 1.5 });
+
+    const inspectPlayer = async (preferAudio: boolean) => {
+      const client = new window.chaimuModule.default({ preferAudio, video });
+      await client.init();
+
+      let playError: string | undefined;
+      try {
+        await client.player.play();
+      } catch (error) {
+        playError = error instanceof Error ? error.message : String(error);
+      }
+
+      await client.player.pause();
+      const result = {
+        currentSrc: client.player.currentSrc,
+        currentTime: client.player.currentTime,
+        name: client.player.name,
+        playError,
+        src: client.player.src,
+      };
+      await client.destroy();
+      return result;
+    };
+
+    return Promise.all([inspectPlayer(false), inspectPlayer(true)]);
+  });
+
+  expect(states).toEqual([
+    {
+      currentSrc: undefined,
+      currentTime: 0,
+      name: "ChaimuPlayer",
+      playError: "No audio source provided",
+      src: undefined,
+    },
+    {
+      currentSrc: undefined,
+      currentTime: 0,
+      name: "AudioPlayer",
+      playError: "No audio source provided",
+      src: undefined,
+    },
+  ]);
+});
+
+test("both players activate a source assigned after initialization", async ({ page }) => {
+  const states = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+
+    const inspectPlayer = async (preferAudio: boolean) => {
+      const client = new window.chaimuModule.default({ preferAudio, video });
+      await client.init();
+      const source = `/audio.wav?late=${preferAudio}`;
+      client.player.src = source;
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Assigned source did not load")), 5_000);
+        const check = () => {
+          if (client.player.currentSrc === source) {
+            clearTimeout(timeout);
+            resolve();
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        check();
+      });
+
+      const result = {
+        currentSrc: client.player.currentSrc,
+        name: client.player.name,
+        src: client.player.src,
+      };
+      await client.destroy();
+      return result;
+    };
+
+    return Promise.all([inspectPlayer(false), inspectPlayer(true)]);
+  });
+
+  expect(states).toEqual([
+    {
+      currentSrc: "/audio.wav?late=false",
+      name: "ChaimuPlayer",
+      src: "/audio.wav?late=false",
+    },
+    {
+      currentSrc: "/audio.wav?late=true",
+      name: "AudioPlayer",
+      src: "/audio.wav?late=true",
+    },
+  ]);
+});
+
 test("AudioPlayer synchronizes time and rate from real video events", async ({ page }) => {
   const state = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
@@ -304,8 +402,6 @@ test("AudioPlayer reconnects Web Audio after source replacement", async ({ page 
 });
 
 test("ChaimuPlayer.play starts its media element", async ({ page }) => {
-  test.fail(true, "ChaimuPlayer.play only resumes AudioContext");
-
   await page.evaluate(async () => {
     const video = document.querySelector("video")!;
     const button = document.querySelector("button")!;
@@ -333,6 +429,83 @@ test("ChaimuPlayer.play starts its media element", async ({ page }) => {
   await button.click();
   await expect(button).toHaveAttribute("data-result", /true|false/);
   expect(await button.getAttribute("data-result")).toBe("false");
+});
+
+test("both players propagate media playback rejection", async ({ page }) => {
+  const errors = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+
+    const inspectPlayer = async (preferAudio: boolean) => {
+      const client = new window.chaimuModule.default({
+        preferAudio,
+        url: "/audio.wav",
+        video,
+      });
+      await client.init();
+
+      const player = client.player;
+      const audio =
+        player instanceof window.chaimuModule.AudioPlayer ? player.audio : player.audioElement!;
+      audio.play = () => Promise.reject(new DOMException("Playback blocked", "NotAllowedError"));
+
+      try {
+        await player.play();
+        return undefined;
+      } catch (error) {
+        return {
+          message: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : undefined,
+          player: player.name,
+        };
+      } finally {
+        await client.destroy();
+      }
+    };
+
+    return Promise.all([inspectPlayer(false), inspectPlayer(true)]);
+  });
+
+  expect(errors).toEqual([
+    { message: "Playback blocked", name: "NotAllowedError", player: "ChaimuPlayer" },
+    { message: "Playback blocked", name: "NotAllowedError", player: "AudioPlayer" },
+  ]);
+});
+
+test("both players pause media and report its playback clock", async ({ page }) => {
+  const states = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "currentTime", { configurable: true, value: 1.5 });
+
+    const inspectPlayer = async (preferAudio: boolean) => {
+      const client = new window.chaimuModule.default({
+        preferAudio,
+        url: "/audio.wav",
+        video,
+      });
+      await client.init();
+
+      const player = client.player;
+      const audio =
+        player instanceof window.chaimuModule.AudioPlayer ? player.audio : player.audioElement!;
+      Object.defineProperty(audio, "currentTime", { configurable: true, value: 0.25 });
+      let pauseCalls = 0;
+      audio.pause = () => {
+        pauseCalls += 1;
+      };
+
+      await player.pause();
+      const result = { currentTime: player.currentTime, pauseCalls, player: player.name };
+      await client.destroy();
+      return result;
+    };
+
+    return Promise.all([inspectPlayer(false), inspectPlayer(true)]);
+  });
+
+  expect(states).toEqual([
+    { currentTime: 0.25, pauseCalls: 1, player: "ChaimuPlayer" },
+    { currentTime: 0.25, pauseCalls: 1, player: "AudioPlayer" },
+  ]);
 });
 
 test("ChaimuPlayer unloads old media when its source changes", async ({ page }) => {
@@ -504,7 +677,7 @@ test("clearing cancels a start waiting to resume", async ({ page }) => {
   });
 });
 
-test("start requested during clearing is ignored", async ({ page }) => {
+test("start requested during clearing rejects when no media remains", async ({ page }) => {
   const statuses = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
     const client = new window.chaimuModule.default({ url: "/audio.wav", video });
@@ -538,7 +711,7 @@ test("start requested during clearing is ignored", async ({ page }) => {
     return results.map(({ status }) => status);
   });
 
-  expect(statuses).toEqual(["fulfilled", "fulfilled"]);
+  expect(statuses).toEqual(["fulfilled", "rejected"]);
 });
 
 test("media-element playback does not retain a duplicate decoded buffer", async ({ page }) => {
