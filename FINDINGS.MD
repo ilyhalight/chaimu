@@ -201,7 +201,7 @@ still does not use the serialized lifecycle, and a caller-provided
 ## Recommended Order
 
 1. ~~Define identical `play`, `pause`, `src`, `currentSrc`, `currentTime`, and rejection semantics for both players. Make source-less initialization consistently valid because `url` is optional.~~ — **Done**
-2. Centralize media cleanup and lifecycle state. Unload old elements before every replacement, preserve volume independently of transient nodes, and compose caller and lifecycle abort signals.
+2. ~~Centralize media cleanup and lifecycle state. Unload old elements before every replacement, preserve volume independently of transient nodes, and compose caller and lifecycle abort signals.~~ — **Done**
 3. Remove the unused decoding path. Use direct media URL streaming for the normal path and retain a buffered Blob fallback only where custom fetch behavior requires it.
 4. Reject unsuccessful HTTP responses with URL and status details, preserve `cause`, and retain abort identity.
 5. Add `seeking` and `ended` synchronization and bounded drift correction.
