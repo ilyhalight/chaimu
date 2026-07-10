@@ -33,6 +33,9 @@ export class BasePlayer {
 
   protected isDestroyed = false;
   protected destructionPromise: Promise<this> | undefined;
+  protected storedVolume = 1;
+  protected lifecycleGeneration = 0;
+  private lifecycleQueue: Promise<void> = Promise.resolve();
 
   constructor(chaimu: Chaimu, src?: string) {
     this.chaimu = chaimu;
@@ -87,6 +90,38 @@ export class BasePlayer {
         this.chaimu.audioContext = undefined;
       }
     }
+  }
+
+  protected unloadMediaElement(mediaElement: HTMLMediaElement | undefined) {
+    if (!mediaElement) {
+      return;
+    }
+
+    mediaElement.pause();
+    mediaElement.src = "";
+    mediaElement.removeAttribute("src");
+    mediaElement.load();
+  }
+
+  protected composeFetchSignal(lifecycleSignal?: AbortSignal) {
+    const callerSignal = this.fetchOpts?.signal;
+    if (!(callerSignal instanceof AbortSignal)) {
+      return lifecycleSignal;
+    }
+    if (!lifecycleSignal || callerSignal === lifecycleSignal) {
+      return callerSignal;
+    }
+
+    return AbortSignal.any([callerSignal, lifecycleSignal]);
+  }
+
+  protected enqueueLifecycle(operation: () => Promise<this>): Promise<this> {
+    const result = this.lifecycleQueue.then(operation);
+    this.lifecycleQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   /**
@@ -201,6 +236,7 @@ export class AudioPlayer extends BasePlayer {
     this.disconnectAudioNodes();
 
     this.gainNode = this.chaimu.audioContext.createGain();
+    this.gainNode.gain.value = this.storedVolume;
     this.gainNode.connect(this.chaimu.audioContext.destination);
     this.audioSource = this.chaimu.audioContext.createMediaElementSource(this.audio);
     this.audioSource.connect(this.gainNode);
@@ -219,8 +255,14 @@ export class AudioPlayer extends BasePlayer {
   }
 
   protected updateAudio() {
+    this.lifecycleGeneration += 1;
+    this.disconnectAudioNodes();
+    this.unloadMediaElement(this.audio);
     this.audio = new Audio(this.src);
     this.audio.crossOrigin = "anonymous";
+    if (!this.chaimu.audioContext) {
+      this.audio.volume = this.storedVolume;
+    }
     this._currentSrc = this.src;
     return this;
   }
@@ -271,11 +313,10 @@ export class AudioPlayer extends BasePlayer {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async clear(): Promise<this> {
-    this.audio.pause();
-    this.audio.src = "";
-    this.audio.removeAttribute("src");
-    this._currentSrc = undefined;
+    this.lifecycleGeneration += 1;
     this.disconnectAudioNodes();
+    this.unloadMediaElement(this.audio);
+    this._currentSrc = undefined;
     return this;
   }
 
@@ -291,17 +332,29 @@ export class AudioPlayer extends BasePlayer {
     if (!this._src) {
       throw new Error("No audio source provided");
     }
-    if (this.chaimu.audioContext?.state === "suspended") {
-      await this.chaimu.audioContext.resume();
-    }
-    await this.audio.play();
-    return this;
+
+    const generation = this.lifecycleGeneration;
+    return this.enqueueLifecycle(async () => {
+      if (generation !== this.lifecycleGeneration) {
+        return this;
+      }
+      if (this.chaimu.audioContext?.state === "suspended") {
+        await this.chaimu.audioContext.resume();
+      }
+      if (generation !== this.lifecycleGeneration) {
+        return this;
+      }
+
+      await this.audio.play();
+      return this;
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async pause(): Promise<this> {
     this.assertActive();
     debug.log("[AudioPlayer] pause called");
+    this.lifecycleGeneration += 1;
     this.audio.pause();
     return this;
   }
@@ -314,14 +367,10 @@ export class AudioPlayer extends BasePlayer {
       return;
     }
 
-    if (this.chaimu.audioContext && !this.audioSource) {
-      this.updateAudio();
+    this.updateAudio();
+    if (this.chaimu.audioContext) {
       this.initAudioBooster();
-      return;
     }
-
-    this.audio.src = url;
-    this._currentSrc = url;
   }
 
   get src() {
@@ -333,6 +382,7 @@ export class AudioPlayer extends BasePlayer {
   }
 
   set volume(value: number) {
+    this.storedVolume = value;
     if (this.gainNode) {
       this.gainNode.gain.value = value;
       return;
@@ -342,7 +392,7 @@ export class AudioPlayer extends BasePlayer {
   }
 
   get volume() {
-    return this.gainNode ? this.gainNode.gain.value : this.audio.volume;
+    return this.storedVolume;
   }
 
   get playbackRate() {
@@ -367,21 +417,10 @@ export class ChaimuPlayer extends BasePlayer {
   gainNode: GainNode | undefined;
   blobUrl: string | undefined;
 
-  private lifecycleGeneration = 0;
-  private lifecycleQueue: Promise<void> = Promise.resolve();
   private initializationAbortController: AbortController | undefined;
   private cancelInitialization: (() => void) | undefined;
   private clearingPromise: Promise<this> | undefined;
   private sourceGeneration = 0;
-
-  private enqueueLifecycle(operation: () => Promise<this>): Promise<this> {
-    const result = this.lifecycleQueue.then(operation);
-    this.lifecycleQueue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }
 
   async fetchAudio(signal?: AbortSignal) {
     if (!this._src) {
@@ -396,12 +435,12 @@ export class ChaimuPlayer extends BasePlayer {
     let tempBlobUrl: string | undefined;
 
     try {
-      const fetchSignal = this.fetchOpts?.signal ?? signal;
+      const fetchSignal = this.composeFetchSignal(signal);
       const res = await this.fetch(this._src, { ...this.fetchOpts, signal: fetchSignal });
-      signal?.throwIfAborted();
+      fetchSignal?.throwIfAborted();
       debug.log(`[ChaimuPlayer] Decoding fetched audio...`);
       const data = await res.arrayBuffer();
-      signal?.throwIfAborted();
+      fetchSignal?.throwIfAborted();
 
       // Create a Blob from the ArrayBuffer
       const blob = new Blob([data]);
@@ -411,7 +450,7 @@ export class ChaimuPlayer extends BasePlayer {
 
       // Decode audio data
       const audioBuffer = await this.chaimu.audioContext.decodeAudioData(data);
-      signal?.throwIfAborted();
+      fetchSignal?.throwIfAborted();
 
       if (this.blobUrl) {
         URL.revokeObjectURL(this.blobUrl);
@@ -437,6 +476,7 @@ export class ChaimuPlayer extends BasePlayer {
     this.disconnectAudioNodes();
 
     this.gainNode = this.chaimu.audioContext.createGain();
+    this.gainNode.gain.value = this.storedVolume;
     return this;
   }
 
@@ -451,6 +491,20 @@ export class ChaimuPlayer extends BasePlayer {
     }
   }
 
+  private releaseMediaResources() {
+    this.disconnectAudioNodes();
+    this.unloadMediaElement(this.audioElement);
+    this.audioElement = undefined;
+    this.audioBuffer = undefined;
+
+    if (this.blobUrl) {
+      URL.revokeObjectURL(this.blobUrl);
+      this.blobUrl = undefined;
+    }
+
+    this._currentSrc = undefined;
+  }
+
   async init() {
     this.assertActive();
     if (!this._src) {
@@ -462,6 +516,8 @@ export class ChaimuPlayer extends BasePlayer {
       if (generation !== this.lifecycleGeneration) {
         return this;
       }
+
+      this.releaseMediaResources();
 
       const abortController = new AbortController();
       let cancelInitialization: () => void;
@@ -598,26 +654,8 @@ export class ChaimuPlayer extends BasePlayer {
     this.cancelInitialization?.();
 
     const clearingPromise = this.enqueueLifecycle(async () => {
-      await this.pause();
-
-      if (this.audioElement) {
-        this.audioElement.pause();
-        this.audioElement = undefined;
-      }
-
-      if (this.blobUrl) {
-        URL.revokeObjectURL(this.blobUrl);
-        this.blobUrl = undefined;
-      }
-
-      this.disconnectAudioNodes();
-
-      const oldVolume = this.gainNode ? this.gainNode.gain.value : 1;
+      this.releaseMediaResources();
       await this.reopenCtx();
-      if (this.chaimu.audioContext) {
-        this.initAudioBooster();
-        this.volume = oldVolume;
-      }
 
       return this;
     });
@@ -646,21 +684,7 @@ export class ChaimuPlayer extends BasePlayer {
     this.cancelInitialization?.();
 
     this.destructionPromise = this.enqueueLifecycle(async () => {
-      if (this.audioElement) {
-        this.audioElement.pause();
-        this.audioElement.src = "";
-        this.audioElement.removeAttribute("src");
-        this.audioElement.load();
-        this.audioElement = undefined;
-      }
-
-      this.audioBuffer = undefined;
-      if (this.blobUrl) {
-        URL.revokeObjectURL(this.blobUrl);
-        this.blobUrl = undefined;
-      }
-
-      this.disconnectAudioNodes();
+      this.releaseMediaResources();
       await this.closeAudioContext();
       return this;
     });
@@ -734,11 +758,6 @@ export class ChaimuPlayer extends BasePlayer {
     this.assertActive();
     this._src = url;
 
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement = undefined;
-    }
-
     const clearing = this.clear();
     const sourceGeneration = this.sourceGeneration;
 
@@ -767,13 +786,14 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   set volume(value: number) {
+    this.storedVolume = value;
     if (this.gainNode) {
       this.gainNode.gain.value = value;
     }
   }
 
   get volume() {
-    return this.gainNode ? this.gainNode.gain.value : 0;
+    return this.storedVolume;
   }
 
   set playbackRate(value: number) {

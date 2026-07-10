@@ -361,6 +361,53 @@ test("preferAudio resumes its suspended AudioContext before playback", async ({ 
   expect(state).toBe("running");
 });
 
+test("AudioPlayer cleanup cancels playback waiting for context resume", async ({ page }) => {
+  const state = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+    const client = new window.chaimuModule.default({
+      preferAudio: true,
+      url: "/audio.wav",
+      video,
+    });
+    await client.init();
+
+    if (!(client.player instanceof window.chaimuModule.AudioPlayer) || !client.audioContext) {
+      throw new Error("Expected AudioPlayer with an AudioContext");
+    }
+
+    const player = client.player;
+    await client.audioContext.suspend();
+    let markResumeStarted!: () => void;
+    let releaseResume!: () => void;
+    const resumeStarted = new Promise<void>((resolve) => {
+      markResumeStarted = resolve;
+    });
+    const resumeGate = new Promise<void>((resolve) => {
+      releaseResume = resolve;
+    });
+    client.audioContext.resume = async () => {
+      markResumeStarted();
+      await resumeGate;
+    };
+    let playCalls = 0;
+    player.audio.play = () => {
+      playCalls += 1;
+      return Promise.resolve();
+    };
+
+    const playing = player.play();
+    await resumeStarted;
+    await player.clear();
+    releaseResume();
+    await playing;
+    const result = { hasSrc: player.audio.hasAttribute("src"), playCalls };
+    await client.destroy();
+    return result;
+  });
+
+  expect(state).toEqual({ hasSrc: false, playCalls: 0 });
+});
+
 test("AudioPlayer reconnects Web Audio after source replacement", async ({ page }) => {
   const state = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
@@ -376,6 +423,7 @@ test("AudioPlayer reconnects Web Audio after source replacement", async ({ page 
     }
 
     const player = client.player;
+    const oldAudioElement = player.audio;
     player.src = undefined;
     player.src = "/audio.wav?replacement";
     if (player.audio.readyState < HTMLMediaElement.HAVE_METADATA) {
@@ -391,6 +439,8 @@ test("AudioPlayer reconnects Web Audio after source replacement", async ({ page 
     const result = {
       connected: Boolean(player.audioSource),
       currentSrc: player.currentSrc,
+      oldMediaHasSrc: oldAudioElement.hasAttribute("src"),
+      replacedMedia: player.audio !== oldAudioElement,
     };
     await player.clear();
     await client.audioContext?.close();
@@ -399,6 +449,8 @@ test("AudioPlayer reconnects Web Audio after source replacement", async ({ page 
 
   expect(state.connected).toBe(true);
   expect(state.currentSrc).toContain("/audio.wav?replacement");
+  expect(state.oldMediaHasSrc).toBe(false);
+  expect(state.replacedMedia).toBe(true);
 });
 
 test("ChaimuPlayer.play starts its media element", async ({ page }) => {
@@ -537,6 +589,7 @@ test("ChaimuPlayer unloads old media when its source changes", async ({ page }) 
     const result = {
       currentSrc: player.currentSrc,
       currentSrcWhileLoading,
+      oldMediaHasSrc: oldAudioElement.hasAttribute("src"),
       oldAudioPaused: oldAudioElement.paused,
       replacementLoaded: Boolean(player.audioElement),
     };
@@ -548,31 +601,143 @@ test("ChaimuPlayer unloads old media when its source changes", async ({ page }) 
   expect(state).toEqual({
     currentSrc: "/audio.wav?replacement",
     currentSrcWhileLoading: undefined,
+    oldMediaHasSrc: false,
     oldAudioPaused: true,
     replacementLoaded: true,
   });
 });
 
-test("ChaimuPlayer preserves volume while clearing", async ({ page }) => {
-  test.fail(true, "clear reads volume after disconnecting its gain node");
-
-  const volume = await page.evaluate(async () => {
+test("both players preserve volume across cleanup and replacement", async ({ page }) => {
+  const volumes = await page.evaluate(async () => {
     const video = document.querySelector("video")!;
-    const client = new window.chaimuModule.default({ url: "/audio.wav", video });
-    await client.init();
 
-    if (!(client.player instanceof window.chaimuModule.ChaimuPlayer)) {
-      throw new Error("Expected ChaimuPlayer");
-    }
+    const inspectPlayer = async (preferAudio: boolean) => {
+      const client = new window.chaimuModule.default({
+        preferAudio,
+        url: "/audio.wav",
+        video,
+      });
+      await client.init();
 
-    client.player.volume = 0.25;
-    await client.player.clear();
-    const result = client.player.volume;
-    await client.audioContext?.close();
+      client.player.volume = 0.25;
+      await client.player.clear();
+      const afterClear = client.player.volume;
+      client.player.src = "/audio.wav?replacement";
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("Replacement source did not load")),
+          5_000,
+        );
+        const check = () => {
+          if (client.player.currentSrc === "/audio.wav?replacement") {
+            clearTimeout(timeout);
+            resolve();
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        check();
+      });
+
+      const result = { afterClear, afterReplacement: client.player.volume };
+      await client.destroy();
+      return result;
+    };
+
+    return Promise.all([inspectPlayer(false), inspectPlayer(true)]);
+  });
+
+  expect(volumes).toEqual([
+    { afterClear: 0.25, afterReplacement: 0.25 },
+    { afterClear: 0.25, afterReplacement: 0.25 },
+  ]);
+});
+
+test("repeated initialization unloads replaced media for both players", async ({ page }) => {
+  const states = await page.evaluate(async () => {
+    const video = document.querySelector("video")!;
+
+    const inspectPlayer = async (preferAudio: boolean) => {
+      const client = new window.chaimuModule.default({
+        preferAudio,
+        url: "/audio.wav",
+        video,
+      });
+      await client.init();
+
+      const oldMedia =
+        client.player instanceof window.chaimuModule.AudioPlayer
+          ? client.player.audio
+          : client.player.audioElement!;
+      await client.init();
+      const currentMedia =
+        client.player instanceof window.chaimuModule.AudioPlayer
+          ? client.player.audio
+          : client.player.audioElement!;
+      const result = {
+        oldMediaHasSrc: oldMedia.hasAttribute("src"),
+        oldMediaPaused: oldMedia.paused,
+        replacedMedia: currentMedia !== oldMedia,
+      };
+      await client.destroy();
+      return result;
+    };
+
+    return Promise.all([inspectPlayer(false), inspectPlayer(true)]);
+  });
+
+  expect(states).toEqual([
+    { oldMediaHasSrc: false, oldMediaPaused: true, replacedMedia: true },
+    { oldMediaHasSrc: false, oldMediaPaused: true, replacedMedia: true },
+  ]);
+});
+
+test("lifecycle cancellation is composed with a caller fetch signal", async ({ page }) => {
+  const state = await page.evaluate(async () => {
+    const callerController = new AbortController();
+    let fetchSignal: AbortSignal | undefined;
+    let markFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
+    const fetchFn = (_input: string | URL | Request, init?: RequestInit) => {
+      fetchSignal = init?.signal ?? undefined;
+      markFetchStarted();
+      return new Promise<Response>((_resolve, reject) => {
+        fetchSignal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Fetch aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    };
+    const video = document.querySelector("video")!;
+    const client = new window.chaimuModule.default({
+      fetchFn,
+      fetchOpts: { signal: callerController.signal },
+      url: "/audio.wav",
+      video,
+    });
+    const initializing = client.init();
+    await fetchStarted;
+    const clearing = client.player.clear();
+    const results = await Promise.allSettled([initializing, clearing]);
+    const result = {
+      callerAborted: callerController.signal.aborted,
+      fetchAborted: fetchSignal?.aborted,
+      statuses: results.map(({ status }) => status),
+      usedCallerSignalDirectly: fetchSignal === callerController.signal,
+    };
+    await client.destroy();
     return result;
   });
 
-  expect(volume).toBe(0.25);
+  expect(state).toEqual({
+    callerAborted: false,
+    fetchAborted: true,
+    statuses: ["fulfilled", "fulfilled"],
+    usedCallerSignalDirectly: false,
+  });
 });
 
 test("ChaimuPlayer reports unsuccessful HTTP responses", async ({ page }) => {

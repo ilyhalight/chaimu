@@ -56,6 +56,14 @@ const chaimu = new Chaimu({
 
 [Demo website](https://chaimu.toil.cc/)
 
+Run the demo page against the current source checkout:
+
+```bash
+bun run demo
+```
+
+Then open `http://127.0.0.1:4174`.
+
 ## Install
 
 Installation via Bun:
