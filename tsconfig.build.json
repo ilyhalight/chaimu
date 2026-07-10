@@ -37,5 +37,6 @@
     "./test-src",
     "./build.ts",
     "node_modules",
-  ]
+  ],
+  "include": ["src"]
 }
