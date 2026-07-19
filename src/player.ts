@@ -10,7 +10,10 @@ export const videoLipSyncEvents = [
   "waiting",
   "pause",
   "seeked", // for work with video repeat
+  "timeupdate", // for 3rd-parties speed controllers
 ];
+
+const LIPSYNC_DRIFT_THRESHOLD = 0.5;
 
 export function initAudioContext() {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -56,10 +59,46 @@ export class BasePlayer {
   }
 
   handleVideoEvent = (event: Event) => {
-    debug.log(`handle video ${event.type}`);
+    if (event.type !== "timeupdate") {
+      // timeupdate fires ~4x/sec — logging it drowns out the useful events
+      debug.log(`handle video ${event.type}`);
+    }
     this.lipSync(event.type);
     return this;
   };
+
+  /**
+   * Drift correction for the frequent "timeupdate" event: no-op unless the audio
+   * is actually playing and buffered, re-syncs only when drift exceeds threshold
+   */
+  protected lipSyncOnTimeupdate(audio: HTMLAudioElement, restart: () => void) {
+    const video = this.chaimu.video;
+    if (!video) {
+      return this;
+    }
+
+    if (audio.ended) {
+      // looped video with a shorter audio track: "seeked" isn't guaranteed on
+      // loop restart, so timeupdate is the only chance to resume playback
+      if (video.currentTime < audio.currentTime - LIPSYNC_DRIFT_THRESHOLD) {
+        audio.currentTime = video.currentTime;
+        restart();
+      }
+      return this;
+    }
+
+    if (audio.paused || audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+      // paused: discrete events start playback; starved: re-seeking every
+      // timeupdate would only keep interrupting buffering
+      return this;
+    }
+
+    if (Math.abs(audio.currentTime - video.currentTime) > LIPSYNC_DRIFT_THRESHOLD) {
+      audio.currentTime = video.currentTime;
+    }
+
+    return this;
+  }
 
   removeVideoEvents() {
     for (const e of videoLipSyncEvents) {
@@ -185,6 +224,10 @@ export class AudioPlayer extends BasePlayer {
   };
 
   lipSync(mode: false | string = false) {
+    if (mode === "timeupdate") {
+      return this.lipSyncOnTimeupdate(this.audio, () => this.syncPlay());
+    }
+
     debug.log("[AudioPlayer] lipsync video", this.chaimu.video);
     if (!this.chaimu.video) {
       return this;
@@ -417,6 +460,13 @@ export class ChaimuPlayer extends BasePlayer {
   }
 
   lipSync(mode: false | string = false) {
+    if (mode === "timeupdate") {
+      if (!this.audioElement) {
+        return this;
+      }
+      return this.lipSyncOnTimeupdate(this.audioElement, () => void this.start());
+    }
+
     debug.log("[ChaimuPlayer] lipsync video", this.chaimu.video, this);
     if (!this.chaimu.video) {
       return this;
