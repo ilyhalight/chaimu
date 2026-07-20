@@ -7,7 +7,9 @@ export default class Chaimu {
   audioContext: AudioContext | undefined;
 
   private isDestroyed = false;
+  private isInitialized = false;
   private destructionPromise: Promise<this> | undefined;
+  private lifecycleQueue: Promise<void> | undefined;
 
   player: AudioPlayer | ChaimuPlayer;
   video: HTMLVideoElement;
@@ -25,23 +27,88 @@ export default class Chaimu {
     this._debug = config.debug = debug;
     this.fetchFn = fetchFn;
     this.fetchOpts = fetchOpts;
+    this.video = video;
     this.audioContext = initAudioContext();
     this.player =
       this.audioContext && !preferAudio ? new ChaimuPlayer(this, url) : new AudioPlayer(this, url);
-    this.video = video;
   }
 
-  async init() {
+  private assertActive() {
     if (this.isDestroyed) {
       throw new Error("Chaimu has been destroyed");
     }
+  }
 
-    await this.player.init();
-    if (this.video && !this.video.paused) {
-      this.player.lipSync("play");
+  private isVideoPlaying(video: HTMLVideoElement) {
+    return (
+      !video.paused &&
+      !video.ended &&
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    );
+  }
+
+  private enqueueLifecycle<T>(operation: () => PromiseLike<T> | T): Promise<T> {
+    let result: Promise<T>;
+    if (this.lifecycleQueue) {
+      result = this.lifecycleQueue.then(operation);
+    } else {
+      try {
+        result = Promise.resolve(operation());
+      } catch (error) {
+        result = Promise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
     }
 
-    this.player.addVideoEvents();
+    const lifecycleQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.lifecycleQueue = lifecycleQueue;
+    void lifecycleQueue.then(() => {
+      if (this.lifecycleQueue === lifecycleQueue) {
+        this.lifecycleQueue = undefined;
+      }
+    });
+    return result;
+  }
+
+  async init() {
+    this.assertActive();
+
+    return this.enqueueLifecycle(async () => {
+      this.assertActive();
+      await this.player.init();
+      if (this.isDestroyed) {
+        return;
+      }
+      if (this.isVideoPlaying(this.video)) {
+        this.player.lipSync("playing");
+      }
+
+      this.player.addVideoEvents();
+      this.isInitialized = true;
+    });
+  }
+
+  async replaceVideo(newVideo: HTMLVideoElement): Promise<this> {
+    this.assertActive();
+
+    return this.enqueueLifecycle(() => {
+      this.assertActive();
+      if (newVideo === this.video) {
+        return this;
+      }
+
+      this.player.removeVideoEvents();
+      this.video = newVideo;
+
+      if (this.isInitialized) {
+        this.player.addVideoEvents();
+      }
+
+      this.player.lipSync(this.isVideoPlaying(newVideo) ? "seeked" : "pause");
+      return this;
+    });
   }
 
   destroy(): Promise<this> {

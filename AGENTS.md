@@ -12,11 +12,23 @@
 - `src/client.ts` selects `ChaimuPlayer` when `AudioContext` is available, otherwise `AudioPlayer`; `preferAudio` forces the latter. Playback or synchronization changes usually need verification in both paths.
 - Lip sync is event-driven from `videoLipSyncEvents` in `src/player.ts`; keep event registration and removal symmetric.
 
+## Public API and Lifecycle
+
+- `Chaimu.init()` supports a missing initial audio URL, and assigning `player.src` later activates a source. `player.currentSrc` is the source currently loaded into media resources, while `player.src` is the latest requested URL.
+- `Chaimu.destroy()` is terminal and idempotent. Calls to `init()`, `replaceVideo()`, or active player operations after destruction must reject rather than recreate resources.
+- Use `await chaimu.replaceVideo(newVideo)` instead of assigning `chaimu.video` directly. Replacement preserves the player, audio source, volume, media graph, and `AudioContext`; it only rebinds synchronization to the new video.
+- Video replacement is serialized with initialization. Remove listeners from the old element before assigning `chaimu.video`, subscribe to the new element only after initialization, and keep `addVideoEvents()` idempotent. Destroy must always detach from the latest bound video.
+- Replacement synchronizes `currentTime`, `playbackRate`, and paused/playing state. A playing replacement uses the `seeked` lip-sync path; playback rejection is handled like a normal autoplay/resume error and must not roll back the video replacement.
+- Every newly created audio media element must initialize its `playbackRate` from the current video. A video `ratechange` can occur before asynchronous audio initialization or source replacement completes and will not be replayed for the new element.
+- `timeupdate` is a fallback for third-party scripts that intercept `ratechange`; it synchronizes only `playbackRate`. Do not route it through full `lipSync()` or repeatedly assign audio `currentTime`, which would cause continuous seeking.
+- `lifecycleGeneration` invalidates stale initialization/playback work during cleanup, `sourceGeneration` ensures only the latest asynchronous `player.src` assignment can initialize, and `playbackGeneration` cancels a pending `ChaimuPlayer.play()` when a later pause wins. Do not reuse one token for a different lifecycle concern without checking race behavior.
+- `playing` is the authoritative resume signal. `paused === false` is insufficient because it remains false while video is buffering; initialization and replacement also require `readyState >= HAVE_FUTURE_DATA`. `waiting` and `ended` pause translated audio, while `play`, `ratechange`, and `canplay` must not resume it. Looping is resynchronized through `seeked`/`playing`.
+
 ## Commands
 
 - Use Bun and the committed `bun.lock`: `bun install`.
 - Fast source checks: `bunx tsc --noEmit` and `bun run lint`.
-- CI/release build: `bun run build:bun`. It regenerates `src/config.ts`, compiles declarations and ESM to ignored `dist/`, fixes emitted ESM imports, then regenerates ignored `docs/`.
+- CI/release build: `bun run build:min`. It regenerates `src/config.ts`, compiles declarations and ESM to ignored `dist/`, fixes emitted ESM imports, then regenerates ignored `docs/`.
 - Focused package compile: `bun run build:default`; it skips config generation and docs. `bun run build:min` instead creates the optional ignored root bundle `index.min.js` and is not part of CI or package exports.
 - Run `bun run lint` before `bun run build:min`: the full ESLint invocation mistakenly scans an existing `index.min.js` and rejects it because it is outside the TypeScript project. If that artifact already exists, source-only verification is `bunx oxlint --ignore-path=.oxlintignore` followed by `bunx eslint src`.
-- There is no automated test suite or `test` script. Do not treat `test-src/` as runnable tests; use typecheck, lint, build, and targeted browser validation for affected playback behavior.
+- Browser integration tests live in `tests/player.spec.ts` and run with `bun run test`. Keep playback and lifecycle coverage for both `AudioPlayer` and `ChaimuPlayer`; do not treat `test-src/` as runnable tests.

@@ -10,6 +10,8 @@ export const videoLipSyncEvents = [
   "waiting",
   "pause",
   "seeked", // for work with video repeat
+  "ended",
+  "timeupdate",
 ];
 
 export function initAudioContext() {
@@ -36,6 +38,7 @@ export class BasePlayer {
   protected storedVolume = 1;
   protected lifecycleGeneration = 0;
   private lifecycleQueue: Promise<void> = Promise.resolve();
+  private videoWithEvents: HTMLVideoElement | undefined;
 
   constructor(chaimu: Chaimu, src?: string) {
     this.chaimu = chaimu;
@@ -124,6 +127,15 @@ export class BasePlayer {
     return result;
   }
 
+  protected isVideoPlaying() {
+    const video = this.chaimu.video;
+    return (
+      !video.paused &&
+      !video.ended &&
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    );
+  }
+
   /**
    * Synchronizes the lipsync of the video and audio elements
    */
@@ -133,11 +145,18 @@ export class BasePlayer {
   }
 
   handleVideoEvent = (event: Event) => {
-    if (this.isDestroyed) {
+    if (this.isDestroyed || event.currentTarget !== this.chaimu.video) {
       return this;
     }
 
     debug.log(`handle video ${event.type}`);
+    if (event.type === "timeupdate") {
+      if (this.playbackRate !== this.chaimu.video.playbackRate) {
+        this.playbackRate = this.chaimu.video.playbackRate;
+      }
+      return this;
+    }
+
     this.lipSync(event.type);
     return this;
   };
@@ -146,19 +165,29 @@ export class BasePlayer {
     console.error(`[${this.name}]`, error);
   };
 
-  removeVideoEvents() {
+  removeVideoEvents(video = this.videoWithEvents ?? this.chaimu.video) {
     for (const e of videoLipSyncEvents) {
-      this.chaimu.video?.removeEventListener(e, this.handleVideoEvent);
+      video.removeEventListener(e, this.handleVideoEvent);
+    }
+    if (this.videoWithEvents === video) {
+      this.videoWithEvents = undefined;
     }
 
     return this;
   }
 
-  addVideoEvents() {
+  addVideoEvents(video = this.chaimu.video) {
     this.assertActive();
-    for (const e of videoLipSyncEvents) {
-      this.chaimu.video?.addEventListener(e, this.handleVideoEvent);
+    if (this.videoWithEvents === video) {
+      return this;
     }
+    if (this.videoWithEvents) {
+      this.removeVideoEvents(this.videoWithEvents);
+    }
+    for (const e of videoLipSyncEvents) {
+      video.addEventListener(e, this.handleVideoEvent);
+    }
+    this.videoWithEvents = video;
 
     return this;
   }
@@ -260,6 +289,7 @@ export class AudioPlayer extends BasePlayer {
     this.unloadMediaElement(this.audio);
     this.audio = new Audio(this.src);
     this.audio.crossOrigin = "anonymous";
+    this.audio.playbackRate = this.chaimu.video.playbackRate;
     if (!this.chaimu.audioContext) {
       this.audio.volume = this.storedVolume;
     }
@@ -292,16 +322,23 @@ export class AudioPlayer extends BasePlayer {
 
     debug.log(`[AudioPlayer] lipsync mode is ${mode}`);
     switch (mode) {
-      case "play":
-      case "playing":
-      case "seeked": {
-        if (!this.chaimu.video.paused) {
+      case "playing": {
+        if (!this.chaimu.video.paused && !this.chaimu.video.ended) {
           this.syncPlay();
         }
         return this;
       }
+      case "seeked": {
+        if (this.isVideoPlaying()) {
+          this.syncPlay();
+        } else {
+          void this.pause().catch(this.audioErrorHandle);
+        }
+        return this;
+      }
       case "pause":
-      case "waiting": {
+      case "waiting":
+      case "ended": {
         void this.pause().catch(this.audioErrorHandle);
         return this;
       }
@@ -420,6 +457,7 @@ export class ChaimuPlayer extends BasePlayer {
   private initializationAbortController: AbortController | undefined;
   private cancelInitialization: (() => void) | undefined;
   private clearingPromise: Promise<this> | undefined;
+  private playbackGeneration = 0;
   private sourceGeneration = 0;
 
   async fetchAudio(signal?: AbortSignal) {
@@ -560,6 +598,7 @@ export class ChaimuPlayer extends BasePlayer {
     // Create a hidden <audio> from the Blob URL, do not add to DOM
     const audio = new Audio(this.blobUrl);
     audio.crossOrigin = "anonymous";
+    audio.playbackRate = this.chaimu.video.playbackRate;
 
     // Preserve pitch when changing playbackRate
     if ("preservesPitch" in audio) {
@@ -595,17 +634,23 @@ export class ChaimuPlayer extends BasePlayer {
 
     debug.log(`[ChaimuPlayer] lipsync mode is ${mode}`);
     switch (mode) {
-      case "play":
-      case "playing":
-      case "ratechange":
-      case "seeked": {
-        if (!this.chaimu.video.paused) {
+      case "playing": {
+        if (!this.chaimu.video.paused && !this.chaimu.video.ended) {
           void this.play().catch(this.audioErrorHandle);
         }
         return this;
       }
+      case "seeked": {
+        if (this.isVideoPlaying()) {
+          void this.play().catch(this.audioErrorHandle);
+        } else {
+          void this.pause().catch(this.audioErrorHandle);
+        }
+        return this;
+      }
       case "pause":
-      case "waiting": {
+      case "waiting":
+      case "ended": {
         void this.pause().catch(this.audioErrorHandle);
         return this;
       }
@@ -701,9 +746,13 @@ export class ChaimuPlayer extends BasePlayer {
     }
 
     const generation = this.lifecycleGeneration;
+    const playbackGeneration = this.playbackGeneration;
 
     return this.enqueueLifecycle(async () => {
-      if (generation !== this.lifecycleGeneration) {
+      if (
+        generation !== this.lifecycleGeneration ||
+        playbackGeneration !== this.playbackGeneration
+      ) {
         return this;
       }
       if (!this.chaimu.audioContext) {
@@ -719,7 +768,10 @@ export class ChaimuPlayer extends BasePlayer {
         await this.chaimu.audioContext.resume();
       }
 
-      if (generation !== this.lifecycleGeneration) {
+      if (
+        generation !== this.lifecycleGeneration ||
+        playbackGeneration !== this.playbackGeneration
+      ) {
         return this;
       }
 
@@ -748,6 +800,7 @@ export class ChaimuPlayer extends BasePlayer {
   // eslint-disable-next-line @typescript-eslint/require-await
   async pause(): Promise<this> {
     this.assertActive();
+    this.playbackGeneration += 1;
     if (this.audioElement) {
       this.audioElement.pause();
     }
