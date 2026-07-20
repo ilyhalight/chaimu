@@ -1,6 +1,6 @@
 // This file is auto-generated. Don't modify it manually
 export default {
-  version: "1.0.6",
+  version: "1.1.0",
   debug: false,
   fetchFn: fetch.bind(window),
 };

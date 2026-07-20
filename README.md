@@ -23,9 +23,7 @@ Chaimu is an audio player that synchronizes audio with video.
 
 <img src="./images/demo.png" style="width:100%">
 
-## Usage example
-
-A simple usage example:
+## Usage
 
 ```js
 import Chaimu from "chaimu";
@@ -38,23 +36,51 @@ const chaimu = new Chaimu({
 await chaimu.init();
 ```
 
-Using this code, you will link the video to the audio.
+This links the external audio to the video. Playback, seeking, and speed changes are synchronized from the video element.
 
-If AudioContext is reached, you will be able to use advanced audio volume control.
-
-If you want to use a classic player (via audio element), specify `preferAudio` param:
+When the browser supports the Web Audio API, Chaimu selects `ChaimuPlayer`; otherwise, it falls back to `AudioPlayer`. To always use `AudioPlayer`, set `preferAudio`:
 
 ```js
-...
 const chaimu = new Chaimu({
-  ...
-  preferAudio: true
+  url: "https://s3.toil.cc/vot/translated.mp3",
+  video: videoEl,
+  preferAudio: true,
 });
+await chaimu.init();
+```
+
+The initial `url` is optional. You can initialize Chaimu first and assign a source later:
+
+```js
+const chaimu = new Chaimu({ video: videoEl });
+await chaimu.init();
+
+chaimu.player.src = "https://s3.toil.cc/vot/translated.mp3";
+```
+
+Use `replaceVideo()` when switching video elements. It keeps the current player, audio source, volume, and `AudioContext`:
+
+```js
+await chaimu.replaceVideo(nextVideoEl);
+```
+
+Call `destroy()` when Chaimu is no longer needed. Destruction is permanent for that instance:
+
+```js
+await chaimu.destroy();
 ```
 
 ## Demo
 
 [Demo website](https://chaimu.toil.cc/)
+
+Run the demo page against the current source checkout:
+
+```bash
+bun run demo
+```
+
+Then open `http://127.0.0.1:4174`.
 
 ## Install
 
@@ -82,8 +108,8 @@ Don't forget to install the dependencies:
 bun install
 ```
 
-Run build:
+Run the build:
 
 ```bash
-bun build:bun
+bun run build:bun
 ```

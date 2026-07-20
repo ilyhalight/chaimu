@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A live Chaimu demo synchronizing an external audio track with a real video element."
+    />
+    <title>Chaimu | Live sync demo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="https://github.com/ilyhalight/chaimu" aria-label="Chaimu on GitHub">
+        <span class="wordmark-mark" aria-hidden="true"></span>
+        Chaimu
+      </a>
+      <span class="header-label">Browser audio synchronization</span>
+      <a class="source-link" href="https://github.com/ilyhalight/chaimu">View source</a>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">Live signal / 01</p>
+        <h1 id="page-title">One timeline.<br /><em>Two media streams.</em></h1>
+        <div class="intro-copy">
+          <p>
+            Chaimu follows the video element and drives a separate soundtrack through Web Audio.
+            Press play, seek, or change speed to hear both timelines stay together.
+          </p>
+          <p class="demo-note">
+            This demo uses the same remote MP4 for picture and sound. The video track is muted;
+            Chaimu owns the audible track.
+          </p>
+        </div>
+      </section>
+
+      <section class="demo-grid" aria-label="Interactive Chaimu demo">
+        <div class="player-card">
+          <div class="video-stage" id="video-stage">
+            <video
+              id="demo-video"
+              crossorigin="anonymous"
+              src="https://s3.toil.cc/vot/video.mp4"
+              muted
+              playsinline
+              preload="metadata"
+              aria-label="Flower video synchronized by Chaimu"
+            ></video>
+
+            <div class="start-layer" id="start-layer">
+              <p>External audio is loaded on demand</p>
+              <button class="start-button" id="start-button" type="button">
+                <span aria-hidden="true"></span>
+                Start live demo
+              </button>
+            </div>
+
+            <div class="state-badge" id="state-badge" data-tone="idle" aria-live="polite">
+              <span aria-hidden="true"></span>
+              <strong id="state-text">Idle</strong>
+            </div>
+          </div>
+
+          <div class="controls" aria-label="Video controls">
+            <button class="play-button" id="play-button" type="button" aria-label="Play video">
+              <span class="play-icon" aria-hidden="true"></span>
+              <span id="play-label">Play</span>
+            </button>
+
+            <label class="timeline" for="timeline">
+              <span class="sr-only">Seek video</span>
+              <input id="timeline" type="range" min="0" max="1000" value="0" step="1" />
+            </label>
+            <output class="timecode" id="timecode" for="timeline">00:00 / 00:00</output>
+
+            <label class="rate-control" for="rate">
+              <span class="sr-only">Playback speed</span>
+              <select id="rate" aria-label="Playback speed">
+                <option value="0.75">0.75x</option>
+                <option value="1" selected>1x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+              </select>
+            </label>
+
+            <button class="fullscreen-button" id="fullscreen-button" type="button">
+              Fullscreen
+            </button>
+          </div>
+        </div>
+
+        <aside class="monitor" aria-label="Synchronization monitor">
+          <div class="monitor-heading">
+            <p class="eyebrow">Sync monitor</p>
+            <span class="live-chip"><span aria-hidden="true"></span> Live</span>
+          </div>
+
+          <dl class="metrics">
+            <div>
+              <dt>Player</dt>
+              <dd id="engine-value">Not initialized</dd>
+            </div>
+            <div>
+              <dt>Audio source</dt>
+              <dd>External MP4 track</dd>
+            </div>
+            <div>
+              <dt>Video time</dt>
+              <dd id="video-time-value">0.000 s</dd>
+            </div>
+            <div>
+              <dt>Audio drift</dt>
+              <dd id="drift-value">Waiting</dd>
+            </div>
+          </dl>
+
+          <label class="volume-control" for="volume">
+            <span>Chaimu volume</span>
+            <output id="volume-value" for="volume">85%</output>
+            <input id="volume" type="range" min="0" max="100" value="85" step="1" />
+          </label>
+
+          <p class="monitor-footnote">
+            Controls target the video only. Chaimu reacts to its native media events and updates the
+            external audio automatically.
+          </p>
+        </aside>
+      </section>
+
+      <section class="code-strip" aria-labelledby="code-title">
+        <div>
+          <p class="eyebrow">Minimal setup</p>
+          <h2 id="code-title">Wire it in four lines.</h2>
+        </div>
+        <pre><code><span>import</span> Chaimu <span>from</span> "chaimu";
+
+<span>const</span> chaimu = <span>new</span> Chaimu({ video, url: audioUrl });
+<span>await</span> chaimu.init();</code></pre>
+      </section>
+    </main>
+
+    <footer>
+      <span>Chaimu demo</span>
+      <span>Video: The End Of StackOverflow by Theo</span>
+    </footer>
+
+    <script type="module" src="/demo.js"></script>
+  </body>
+</html>

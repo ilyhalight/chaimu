@@ -1,6 +1,8 @@
 dist
 docs
 index.min.js
+playwright-report
+test-results
 
 test-src
 DEV_INFO.md
