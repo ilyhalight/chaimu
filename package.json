@@ -19,16 +19,13 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/bun": "^1.2.15",
-    "eslint": "^9.28.0",
-    "husky": "^9.1.7",
-    "oxlint": "^0.18.0",
-    "pino-pretty": "^13.0.0",
-    "prettier": "^3.5.3",
+    "lefthook": "^2.1.10",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
     "tsc-esm-fix": "^3.1.2",
     "typedoc": "^0.28.5",
     "typedoc-plugin-rename-defaults": "^0.7.3",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.33.0"
+    "typescript": "^6.0.3"
   },
   "exports": {
     ".": {
@@ -81,6 +78,9 @@
     "build:doc": "typedoc --options typedoc.json --tsconfig tsconfig.build.json",
     "build:bun": "bun gen:cfg && bun build:default && bun build:doc",
     "build:min": "bun run ./scripts/build.ts",
-    "lint": "bunx oxlint --ignore-path=.oxlintignore && bunx eslint src tests demo playwright.config.ts"
+    "lint": "bunx oxlint",
+    "lint:fix": "bunx oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check"
   }
 }
