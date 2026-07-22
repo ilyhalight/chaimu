@@ -20,7 +20,7 @@
     "@playwright/test": "^1.61.1",
     "@types/bun": "^1.2.15",
     "lefthook": "^2.1.10",
-    "oxfmt": "^0.59.0",
+    "oxfmt": "^0.60.0",
     "oxlint": "^1.74.0",
     "tsc-esm-fix": "^3.1.2",
     "typedoc": "^0.28.5",
